@@ -1,0 +1,286 @@
+name: Build commit package
+
+on:
+  push:
+    branches: [ "v2.4*" ]
+    paths:
+      - '**.php'
+      - '**.js'
+      - '**.css'
+      - '**.scss'
+      - '**.yaml'
+      - '**.yml'
+      - '**.xml'
+      - '**.json'
+      - '**.twig'
+      - '**.md'
+      - '!**/README.md'
+      - '!**/docs/**'
+      - '!**/tests/**'
+      - '!**/.github/**'
+
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Commit SHA for packaging"
+        required: true
+        type: string
+
+jobs:
+  build-and-upload:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y zip lftp
+
+      - name: Resolve commit
+        id: commit
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            SHA="${{ inputs.sha }}"
+          else
+            SHA="${{ github.sha }}"
+          fi
+
+          echo "sha=$SHA" >> $GITHUB_OUTPUT
+
+          # Ensure we are on the correct commit
+          git checkout "$SHA"
+
+          COMMIT_EPOCH="$(git show -s --format=%ct "$SHA")"
+          COMMIT_STAMP="$(date -u -d "@$COMMIT_EPOCH" +%Y%m%d-%H%M%S)"
+
+          echo "epoch=$COMMIT_EPOCH" >> $GITHUB_OUTPUT
+          echo "stamp=$COMMIT_STAMP" >> $GITHUB_OUTPUT
+
+      - name: Generate manifest from single commit
+        id: manifest
+        shell: bash
+        run: |
+          SHA="${{ steps.commit.outputs.sha }}"
+
+          git diff-tree --no-commit-id --name-status -r "$SHA" > _raw_manifest.txt
+
+          > manifest.tsv
+          > changed_files.txt
+
+          while read -r status a b; do
+            [[ -z "$status" ]] && continue
+
+            case "$status" in
+              R*|C*)
+                path="$b"
+                ;;
+              *)
+                path="$a"
+                ;;
+            esac
+
+            printf "%s\t%s\n" "$status" "$path" >> manifest.tsv
+
+            # For the ZIP, we ignore deletions
+            if [[ "$status" != "D" ]]; then
+              echo "$path" >> changed_files.txt
+            fi
+          done < _raw_manifest.txt
+
+          echo "Changed files:"
+          cat changed_files.txt || true
+
+      - name: Build ZIP with commit changes
+        id: pack
+        shell: bash
+        run: |
+          SHA="${{ steps.commit.outputs.sha }}"
+          TS="$(date -u +%Y%m%d-%H%M%S)"
+          SHORT="${SHA:0:8}"
+          STAMP="${{ steps.commit.outputs.stamp }}"
+
+          ZIP="commit-${STAMP}-${SHA}-package.zip"
+          MAN="commit-${STAMP}-${SHA}-manifest.tsv"
+
+          # Create zip preserving structure
+          if [[ -s changed_files.txt ]]; then
+            zip -r "$ZIP" -@ < changed_files.txt
+          else
+            # Commit without files (rare, but possible)
+            zip -r "$ZIP" README.md >/dev/null 2>&1 || true
+          fi
+
+          cp manifest.tsv "$MAN"
+
+          echo "ts=$TS" >> $GITHUB_OUTPUT
+          echo "short=$SHORT" >> $GITHUB_OUTPUT
+          echo "stamp=$STAMP" >> $GITHUB_OUTPUT
+          echo "zip=$ZIP" >> $GITHUB_OUTPUT
+          echo "man=$MAN" >> $GITHUB_OUTPUT
+
+      - name: Create upgrade & downgrade bash
+        shell: bash
+        run: |
+          SHA="${{ steps.commit.outputs.sha }}"
+          STAMP="${{ steps.commit.outputs.stamp }}"
+          ZIP="${{ steps.pack.outputs.zip }}"
+          MAN="${{ steps.pack.outputs.man }}"
+
+          UPG="commit-${STAMP}-${SHA}-upgrade.sh"
+          DOW="commit-${STAMP}-${SHA}-downgrade.sh"
+
+          cat > "$UPG" <<EOF
+          #!/usr/bin/env bash
+          set -eu
+
+          ROOT_DIR=${{ secrets.HUMHUB_DIR }}
+          PKG_DIR="\${PKG_DIR:-\$ROOT_DIR/github-commit-packages}"
+          BKP_DIR="\${BKP_DIR:-\$ROOT_DIR/github-commit-packages/backups}"
+
+          SHA="${SHA}"
+          STAMP="${STAMP}"
+          ZIP_FILE="\$PKG_DIR/${ZIP}"
+          MANIFEST="\$PKG_DIR/${MAN}"
+
+          if [[ ! -f "\$ZIP_FILE" ]]; then
+            echo "ZIP file not found: \$ZIP_FILE"
+            exit 1
+          fi
+
+          if [[ ! -f "\$MANIFEST" ]]; then
+            echo "Manifest file not found: \$MANIFEST"
+            exit 1
+          fi
+
+          WORK="\$(mktemp -d)"
+          trap 'rm -rf "\$WORK"' EXIT
+
+          echo ">> Extracting package..."
+          unzip -q "\$ZIP_FILE" -d "\$WORK/new"
+
+          echo ">> Creating backup at: \$BKP_DIR/\$STAMP-$SHA"
+          mkdir -p "\$BKP_DIR/\$STAMP-$SHA"
+
+          # Manifest format: STATUS<TAB>path
+          while IFS=\$'\\t' read -r status path; do
+            [[ -z "\$path" ]] && continue
+
+            TARGET="\$ROOT_DIR/protected/modules/wiki/\$path"
+            SOURCE="\$WORK/new/\$path"
+            BACKUP="\$BKP_DIR/\$STAMP-$SHA/\$path"
+
+            # If the commit removed a file
+            if [[ "\$status" == "D" ]]; then
+              if [[ -f "\$TARGET" ]]; then
+                mkdir -p "\$(dirname "\$BACKUP")"
+                cp -a "\$TARGET" "\$BACKUP"
+                rm -f "\$TARGET"
+                echo ">> Removed: \$path (backup made)"
+              fi
+              continue
+            fi
+
+            if [[ ! -f "\$SOURCE" ]]; then
+              echo "!! Source not found in package: \$path (status \$status)"
+              continue
+            fi
+
+            # Backup current file if exists
+            if [[ -f "\$TARGET" ]]; then
+              mkdir -p "\$(dirname "\$BACKUP")"
+              cp -a "\$TARGET" "\$BACKUP"
+            fi
+
+            mkdir -p "\$(dirname "\$TARGET")"
+            cp -a "\$SOURCE" "\$TARGET"
+            echo ">> Updated: \$path"
+
+          done < "\$MANIFEST"
+
+          echo ">> Executing migrations..."
+          cd "\$ROOT_DIR/protected"
+          php yii migrate/up --includeModuleMigrations=1 --interactive=0
+          echo ">> Migrations completed."
+
+          echo ">> Upgrade completed. Stamp: \$STAMP"
+          EOF
+
+          cat > "$DOW" <<EOF
+          #!/usr/bin/env bash
+          set -euo pipefail
+
+          # ========= CONFIGURE HERE =========
+          ROOT_DIR=${{ secrets.HUMHUB_DIR }}
+          BKP_DIR="\${BKP_DIR:-\$ROOT_DIR/github-commit-packages/backups}"
+          # ==================================
+
+          STAMP="${STAMP}"
+          SHA="${SHA}"
+          BACKUP_ROOT="\$BKP_DIR/\$STAMP-$SHA"
+
+          if [[ ! -d "\$BACKUP_ROOT" ]]; then
+            echo "Backup not found: \$BACKUP_ROOT"
+            exit 1
+          fi
+
+          echo ">> Restoring backup from: \$BACKUP_ROOT"
+
+          cd "\$BACKUP_ROOT"
+
+          while IFS= read -r -d '' file; do
+            REL="\${file#./}"
+            SRC="\$BACKUP_ROOT/\$REL"
+            DST="\$ROOT_DIR/protected/modules/wiki/\$REL"
+
+            mkdir -p "\$(dirname "\$DST")"
+            cp -a "\$SRC" "\$DST"
+            echo ">> Restored: \$REL"
+          done < <(find . -type f -print0)
+
+          echo ">> Downgrade completed. Stamp: \$STAMP"
+          EOF
+
+          chmod +x "$UPG" "$DOW"
+
+      - name: Upload package + scripts via FTP
+        env:
+          FTP_HOST: ${{ secrets.FTP_HOST }}
+          FTP_USER: ${{ secrets.FTP_USER }}
+          FTP_PASS: ${{ secrets.FTP_PASS }}
+          REMOTE_DIR: ${{ secrets.FTP_HUMHUB_DIR }}
+        shell: bash
+        run: |
+          SHA="${{ steps.commit.outputs.sha }}"
+          STAMP="${{ steps.commit.outputs.stamp }}"
+          ZIP="${{ steps.pack.outputs.zip }}"
+          MAN="${{ steps.pack.outputs.man }}"
+          UPG="commit-${STAMP}-${SHA}-upgrade.sh"
+          DOW="commit-${STAMP}-${SHA}-downgrade.sh"
+
+          lftp -e "
+            set ssl:verify-certificate no;
+            open -u $FTP_USER,$FTP_PASS $FTP_HOST;
+            mkdir -p $REMOTE_DIR;
+            put -O $REMOTE_DIR/github-commit-packages $ZIP;
+            put -O $REMOTE_DIR/github-commit-packages $MAN;
+            put -O $REMOTE_DIR/github-commit-packages $UPG;
+            put -O $REMOTE_DIR/github-commit-packages $DOW;
+            bye
+          "
+
+      - name: Upload artifact (optional)
+        uses: actions/upload-artifact@v4
+        with:
+          name: deploy-package-${{ steps.pack.outputs.stamp }}
+          path: |
+            changed_files.txt
+            manifest.tsv
+            _raw_manifest.txt
+            commit-*-package.zip
+            commit-*-manifest.tsv
+            commit-*-upgrade.sh
+            commit-*-downgrade.sh
