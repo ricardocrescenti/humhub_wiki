@@ -56,9 +56,15 @@ class Events
             ->where(['is_container_menu' => 1])
             ->all();
         foreach ($containerMenuWikiPages as $containerMenuWikiPage) {
+            /* Get the menu title */
+            $title = $containerMenuWikiPage->tree_title;
+            if ($title == null || trim($title) == "") {
+                $title = $containerMenuWikiPage->title;
+            }
+
             /* @var WikiPage $containerMenuWikiPage */
             $menu->addEntry(new MenuLink([
-                'label' => Html::encode($containerMenuWikiPage->title),
+                'label' => Html::encode($title),
                 'url' => $containerMenuWikiPage->getUrl(),
                 // @TODO: change to use 4th argument of `isActiveState` after v17 release
                 'isActive' => $containerMenuWikiPage->id == Yii::$app->request->get('id') && MenuLink::isActiveState('wiki', 'page', 'view'),

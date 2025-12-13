@@ -28,12 +28,16 @@ $pathLength = count($path);
             <span class="wiki-page-path-last-category">
         <?php endif; ?>
 
-        / <?= $categoryPage instanceof WikiPage
-            ? Link::to($isLast
-                    ? $categoryPage->title
-                    : Helpers::truncateText($categoryPage->title, 25),
-                Url::toWiki($categoryPage))
-            : '<span>' . $categoryPage . '</span>' ?>
+        / <?php
+            if ($categoryPage instanceof WikiPage) {
+                $title = ($categoryPage->tree_title !== null && trim($categoryPage->tree_title) !== '') 
+                    ? $categoryPage->tree_title 
+                    : $categoryPage->title;
+                echo Link::to($isLast ? $title : Helpers::truncateText($title, 25), Url::toWiki($categoryPage));
+            } else {
+                echo '<span>' . $categoryPage . '</span>';
+            }
+        ?>
 
         <?php if ($isLast) : ?></span><?php endif; ?>
 
