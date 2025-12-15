@@ -37,9 +37,19 @@ class HierarchyListService
                 WikiPage::tableName() . '.parent_page_id',
                 WikiPage::tableName() . '.title',
                 WikiPage::tableName() . '.tree_title',
+                WikiPage::tableName() . '.childrens_listing_mode',
             ])
             ->contentContainer($this->container)
             ->readable()
+            ->leftJoin(
+                WikiPage::tableName() . ' AS parent_page',
+                'parent_page.id = ' . WikiPage::tableName() . '.parent_page_id'
+            )
+            ->where([
+                'OR',
+                [WikiPage::tableName() . '.parent_page_id' => null],
+                ['parent_page.childrens_listing_mode' => [0, null]],
+            ])
             ->orderBy([
                 WikiPage::tableName() . '.sort_order' => SORT_ASC,
                 WikiPage::tableName() . '.title' => SORT_ASC,

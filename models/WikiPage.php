@@ -31,6 +31,7 @@ use yii\db\Expression;
  * @property string $tree_title
  * @property int $is_home
  * @property int $admin_only
+ * @property int $childrens_listing_mode
  * @property int $parent_page_id
  * @property int $sort_order
  * @property int $is_container_menu
@@ -113,7 +114,7 @@ class WikiPage extends ContentActiveRecord implements Searchable
             ['title', 'string', 'max' => 255],
             ['tree_title', 'string', 'max' => 255],
             ['parent_page_id', 'validateParentPage'],
-            [['is_home', 'admin_only', 'is_container_menu', 'container_menu_order'], 'integer'],
+            [['is_home', 'admin_only', 'childrens_listing_mode', 'is_container_menu', 'container_menu_order'], 'integer'],
         ];
 
     }
@@ -126,7 +127,7 @@ class WikiPage extends ContentActiveRecord implements Searchable
         $scenarios = parent::scenarios();
         $scenarios[static::SCENARIO_CREATE] = ['title', 'tree_title', 'parent_page_id'];
         $scenarios[static::SCENARIO_EDIT] = ($this->isOwner()) ? ['title', 'tree_title', 'parent_page_id'] : [];
-        $scenarios[static::SCENARIO_ADMINISTER] = ['title', 'tree_title', 'is_home', 'admin_only', 'parent_page_id', 'is_container_menu', 'container_menu_order'];
+        $scenarios[static::SCENARIO_ADMINISTER] = ['title', 'tree_title', 'is_home', 'admin_only', 'childrens_listing_mode', 'parent_page_id', 'is_container_menu', 'container_menu_order'];
         return $scenarios;
     }
 
@@ -155,6 +156,7 @@ class WikiPage extends ContentActiveRecord implements Searchable
             'tree_title' => 'Title (Tree)',
             'is_home' => Yii::t('WikiModule.base', 'Is homepage'),
             'admin_only' => Yii::t('WikiModule.base', 'Protected'),
+            'childrens_listing_mode' => Yii::t('WikiModule.base', 'Display child pages in grid format?'),
             'parent_page_id' => Yii::t('WikiModule.base', 'Parent Page'),
             'is_container_menu' => $isSpaceContainer
                 ? Yii::t('WikiModule.base', 'Show in Space menu')

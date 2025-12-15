@@ -20,6 +20,7 @@ class WikiPageElementVariable extends BaseContentRecordElementVariable
     public string $content;
     public string $isHome;
     public string $isAdminOnly;
+    public string $childrensListingMode;
     public int $sortOrder;
     public bool $isContainerMenu;
     public int $containerMenuOrder;
@@ -33,6 +34,7 @@ class WikiPageElementVariable extends BaseContentRecordElementVariable
             $this->content = $record->latestRevision->content;
             $this->isHome = (bool) $record->is_home;
             $this->isAdminOnly = (bool) $record->admin_only;
+            $this->childrensListingMode = $record->childrens_listing_mode;
             $this->sortOrder = (int) $record->sort_order;
             $this->isContainerMenu = (bool) $record->is_container_menu;
             $this->containerMenuOrder = (int) $record->container_menu_order;

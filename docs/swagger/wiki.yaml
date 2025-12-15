@@ -600,6 +600,10 @@ definitions:
         type: integer
         format: int64
         example: 1
+      childrens_listing_mode:
+        type: integer
+        format: int64
+        example: 0
       parent_page_id:
         type: integer
         format: int64
@@ -688,6 +692,10 @@ definitions:
         PageEditForm:
           type: object
           properties:
+            childrens_listing_mode:
+              type: integer
+              format: int64
+              example: 0
             isPublic:
               type: boolean
               example: 0

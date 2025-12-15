@@ -29,6 +29,7 @@ class RestDefinitions
             'tree_title' => $page->tree_title,
             'is_home' => $page->is_home,
             'admin_only' => $page->admin_only,
+            'childrens_listing_mode' => $page->childrens_listing_mode,
             'parent_page_id' => $page->parent_page_id,
             'permalink' => static::getPagePermalink($page),
             'latest_revision' => static::getWikiPageRevision($page->latestRevision),

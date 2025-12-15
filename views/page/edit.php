@@ -134,6 +134,11 @@ Assets::register($this);
                     'disabled' => $model->isDisabledField('admin_only'),
                 ]) ?>
 
+                <?= $form->field($model->page, 'childrens_listing_mode')->checkbox([
+                    'title' => Yii::t('WikiModule.base', 'Display child pages in grid format?'),
+                    'disabled' => $model->isDisabledField('childrens_listing_mode'),
+                ]) ?>
+
                 <?= $form->field($model->page, 'is_container_menu')->checkbox([
                     'disabled' => $model->isDisabledField('is_container_menu'),
                 ]) ?>

@@ -12,7 +12,7 @@ use humhub\modules\wiki\widgets\CategoryListItem;
 
 /* @var $page WikiPage */
 ?>
-<?php if ($page->isCategory): ?>
+<?php if ($page->isCategory && (int)$page->childrens_listing_mode === 0): ?>
     <div class="wiki-sub-pages<?= Helper::isEnterpriseTheme() ? ' hidden-lg' : '' ?>">
         <ul class="wiki-page-list">
             <?= CategoryListItem::widget([

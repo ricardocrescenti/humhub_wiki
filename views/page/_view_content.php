@@ -31,3 +31,7 @@ use humhub\modules\wiki\helpers\Url;
     <?= Yii::t('WikiModule.base', 'This page is empty.')?><br><br>
     <?= Button::info(Yii::t('WikiModule.base', 'Edit page'))->link(Url::toWikiEdit($page))->icon('fa-pencil-square-o')->visible($canEdit) ?>
 <?php endif; ?>
+
+<?php if ($page->isCategory && (int)$page->childrens_listing_mode === 1): ?>
+    <?= ChildPagesGrid::widget(['page' => $page]) ?>
+<?php endif; ?>
