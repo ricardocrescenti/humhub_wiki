@@ -4,6 +4,7 @@ use humhub\libs\Html;
 use humhub\modules\topic\models\Topic;
 use humhub\modules\topic\widgets\TopicLabel;
 use humhub\modules\wiki\widgets\WikiRichText;
+use humhub\modules\wiki\widgets\ChildPagesGrid;
 use humhub\widgets\Button;
 use humhub\modules\wiki\helpers\Url;
 
